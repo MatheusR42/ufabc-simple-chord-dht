@@ -1,0 +1,4 @@
+node/.venv
+node/src/__pycache__
+node/src/protocols/*
+!node/src/protocols/.gitkeep
