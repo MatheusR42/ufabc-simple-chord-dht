@@ -31,12 +31,3 @@ To run node:
 ```
 python3 ./node/src/node.py
 ```
-
-## Clients
-
-To tryout test stub, open another terminal tab and run:
-
-### Python
-```
-python3 ./node/src/stub.py
-```
