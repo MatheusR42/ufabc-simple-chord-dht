@@ -3,3 +3,4 @@ __pycache__/
 node/src/protocols/*
 client/src/protocols/*
 !node/src/protocols/.gitkeep
+.DS_Store
