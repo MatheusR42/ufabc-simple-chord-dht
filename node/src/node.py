@@ -5,21 +5,23 @@ from servicer import MeuQoelhoMqServicer
 from signal import signal, SIGTERM, SIGINT, pause
 import threading
 import os
+import time
 
 # Interactive terminal function
 def interactive_terminal():
+    time.sleep(5)
     while True:
-        command = input("Enter command (type 'exit' to quit): ")
+        command = input("Enter command (type 'exit' to quit): \n")
         if command == 'exit':
-            print("Exiting interactive terminal...")
+            print("Exiting interactive terminal...  \n")
             break
         else:
-            print(f"Received command: {command}")
+            print(f"Received command: {command}  \n")
 
 # gRPC server function
-def serve(server):
+def serve(server, port):
     server.start()
-    print("Running gRPC server")
+    print(f"gRPC server started on IP 0.0.0.0 and port {port}")
     server.wait_for_termination()
 
 # Thread to run both server and terminal
@@ -28,10 +30,10 @@ if __name__ == "__main__":
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     servicer = MeuQoelhoMqServicer()
     meu_qoelho_mq_pb2_grpc.add_MeuQoelhoMqServicer_to_server(servicer, server)
-    server.add_insecure_port("[::]:50051")
+    port = server.add_insecure_port("[::]:50051")
 
     # Create thread for the gRPC server
-    server_thread = threading.Thread(target=serve, args=(server,))
+    server_thread = threading.Thread(target=serve, args=(server,port))
     server_thread.start()
 
     # Handle termination signals in the main thread

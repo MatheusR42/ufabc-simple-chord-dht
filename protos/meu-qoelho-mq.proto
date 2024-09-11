@@ -1,61 +1,129 @@
 syntax = "proto3";
 
-enum QueueType {
-  NONE = 0;
-  SIMPLE = 1;
-  MULTIPLE = 2;
+message JoinParams {
+  string ip = 1; 
+  uint32 id = 2; // identificador do nó que está entrando
 }
 
-message Queue {
-  string name = 1;
-  QueueType type = 2;
-  int32 pendingMessages = 3;
+message JoinOKResponse {
+  string ip = 1;
+  string prev = 2; // ip do nó predecessor
+  string next = 3; // ip do nó sucessor
 }
 
-message RemoveQueueRequest {
-  string name = 1;
+message LeaveParams {
+  uint32 id = 1;
+  string prev = 2; // ip do nó predecessor
 }
 
-message ListQueueResponse {
-  repeated Queue queues = 1;
+message NodeGoneParams {
+  uint32 id = 1;
+  string next = 2; // ip do nó sucessor
 }
 
-message MessageType {
-  oneof message {
-    string text_message = 1;
-    bytes bytes_message = 2;
-  }
+message StoreParams {
+  uint32 id = 1;
+  bytes content = 2; // conteúdo do objeto
 }
 
-message PublishMessagesRequest {
-  string queueName = 1;
-  repeated MessageType messages = 2;
+message RetrieveParams {
+  uint32 id = 1; // hash do objeto
+  string ip = 2; // ip do nó que está fazendo a busca
 }
 
-message SignToQueuesRequest {
-  repeated string queuesNames = 1;
+message OkParams {
+  uint32 id = 1; // hash do objeto
+  bytes content = 2; // conteúdo do objeto
 }
 
-message SignToQueuesResponse {
-  string queueName = 1;
-  MessageType message = 2;
+message Content {
+  uint32 id = 1;
+  bytes content = 2; // conteúdo do objeto
 }
 
-message ConsumeMessageRequest {
-  string queueName = 1;
-}
-
-message ConsumeMessageResponse {
-  MessageType response = 1;
+message TransferParams {
+  repeated Content contents = 1;
 }
 
 message Empty {}
 
 service MeuQoelhoMq {
-  rpc createQueue(Queue) returns (Queue) {}
-  rpc removeQueue(RemoveQueueRequest) returns (Empty) {}
-  rpc listQueues(Empty) returns (ListQueueResponse) {}
-  rpc publishMessages(PublishMessagesRequest) returns (Empty) {}
-  rpc signToQueues(SignToQueuesRequest) returns (stream SignToQueuesResponse) {}
-  rpc consumeMessageFromQueue(ConsumeMessageRequest) returns (ConsumeMessageResponse) {}
+  // O nó que for iniciado vai olhar no arquivo ./nodes.json e vai chamar o join 
+  // para cada nó que estiver lá.
+  // Caso nenhum nó responda: O nó que foi iniciado vai ser o primeiro nó da
+  // rede.
+  // Se algum nó existir ele deve:
+  // 1. Verificar se o identificador do novo nó é maior do que o seu.
+  //     A. Se for maior, ele deve chamar o join do próximo nó da rede
+  //     B. Se for menor, ele deve chamar o join do nó anterior da rede.
+  //     C. Se o identificador for igual, ele enviar uma mensagem de
+  // JOIN_OK para novo nó.
+  // A resposta é empty porque só precisamos saber se o nó existe na rede.
+  // Quando não existir vai dar erro, quando existir volta empty
+  rpc join(JoinParams) returns (Empty) {}
+
+  // esse método é chamado pelo nó que já está na rede e atualmente é o
+  // responsável pelos arquivos do identificador do nó que está entrando.
+  // essa chama vai diretamente para o nó que está entrando. 
+  // Os params são empty porque vamos receber o ip e id do novo nó através do 
+  // método join.
+  rpc join_ok(Empty) returns (JoinOKResponse) {}
+
+  // O nó ingressante deve, então, enviar uma mensagem NEW_NODE ao seu prev
+  // notificando-o que ele deve atualizar o seu next para apontar para
+  // o nó ingressante.
+  // O param está como Empty porque podemos obter o IP do nó ingressante
+  // através do context.peer()
+  // A resposta é empty porque só precisamos saber funcionou. Se não funcionar,
+  // podemos apenas fazer um raise Exception("msg") 
+  rpc new_code(Empty) returns (Empty) {}
+
+  // LEAVE Esta mensagem é enviada por um nó ao seu sucessor quando
+  // ele deseja deixar a DHT. Os argumento para esta mensagem é o
+  // identificador do nó que está partindo. Uma mensagem LEAVE é seguida 
+  // imediatamente de zero ou mais mensagens TRANSFER que se encarregam de
+  // transferir os dados armazenados no nó que está partindo para o seu sucessor
+  rpc leave(LeaveParams) returns (Empty) {}
+
+  // NODE_GONE Quando um nó deixa a rede, ele envia a mensagem LEAVE
+  // ao seu sucessor. O nó que está partindo também avisa ao seu prede-
+  // cessor que ele deve atualizar o seu sucessor para que aponte para o
+  // sucessor do nó que está saindo. Esta mensagem recebe 3 argumentos:
+  // o identificador, IP do novo sucessor do destinatário
+  rpc node_gone(NodeGoneParams) returns (Empty) {}
+
+  // STORE Esta mensagem é utilizada para armazenar um valor sob uma
+  // determinada chave. Como primeiro argumento ela recebe a chave do
+  // valor a ser armazenada com m bits. Em seguida, ela recebe um número
+  // n que indica o número de bytes do objeto e finalmente os n bytes do va-
+  // lor a ser armazenado.
+  // TODO: NÃO COLOQUEI O PARAM N COM O NÚMERO DE BYTES DO OBJETO. ACHO QUE
+  // NÃO PRECISA
+  rpc store(NodeGoneParams) returns (Empty) {}
+
+  // RETRIEVE Esta mensagem é usada para recuperar valores armazenados
+  // na DHT. Ela recebe como argumentos a chave sendo buscada represen-
+  // tada por um hash de m bits (hash da chave do objeto sendo buscado), o
+  // identificador do nó que está fazendo a busca, seu endereço IP e porta.
+  rpc retrieve(RetrieveParams) returns (Empty) {}
+
+  // OK Esta mensagem é enviada em resposta a uma mensagem RETRIEVE
+  // pelo nó responsável pela chave sendo buscada quando ela está presente
+  // na DHT. Ela recebe como argumentos a chave do objeto e uma sequência de 
+  // n bytes que é o valor armazenado (mesmo formato utilizado pela mensagem STORE). Note
+  // novamente que o remetente desta mensagem não é, necessariamente,
+  // o nó que recebeu a mensagem de RETRIVE.
+  // TODO: NÃO COLOQUEI O PARAM N COM O NÚMERO DE BYTES DO OBJETO. ACHO QUE
+  // NÃO PRECISA
+  rpc ok(OkParams) returns (Empty) {}
+
+  // NOT_FOUND Esta mensagem é enviada em resposta a uma mensagem
+  // RETRIEVE pelo nó responsável pela chave buscada quando não há ne-
+  // nhum dado armazenado com a chave procurada. Esta mensagem não
+  // tem nenhum argumento
+  rpc not_found(Empty) returns (Empty) {}
+
+  // Esta mensagem transfere a responsabilidade pelo armaze-
+  // namento de todos os conteúdos de um nó para outro. 
+  rpc transfer(TransferParams) returns (Empty) {}
 }
